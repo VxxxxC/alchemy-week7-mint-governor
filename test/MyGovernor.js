@@ -1,4 +1,4 @@
-const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { loadFixture, mine } = require("@nomicfoundation/hardhat-network-helpers");
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
 const { toUtf8Bytes, keccak256, parseEther } = ethers.utils;
@@ -7,26 +7,15 @@ describe("MyGovernor", function () {
   async function deployFixture() {
     const [owner, otherAccount] = await ethers.getSigners();
 
-    const transactionCount = await owner.getTransactionCount();
-
-    // gets the address of the token before it is deployed
-    const futureAddress = ethers.utils.getContractAddress({
-      from: owner.address,
-      nonce: transactionCount + 1,
-    });
-    // console.log({ futureAddress });
-    // console.log({ transactionCount });
+    const MyToken = await ethers.getContractFactory("MyToken");
+    const token = await MyToken.deploy();
 
     const MyGovernor = await ethers.getContractFactory("MyGovernor");
-    const governor = await MyGovernor.deploy(futureAddress);
-    // console.log({ governor });
+    const governor = await MyGovernor.deploy(token.address);
 
-    const MyToken = await ethers.getContractFactory("MyToken");
-    const token = await MyToken.deploy(governor.address);
-    // console.log({ token });
+    await token.setGovernor(governor.address);
 
     const delegate = await token.delegate(owner.address);
-    // console.log({ delegate });
 
     return { governor, token, owner, otherAccount };
   }
@@ -58,8 +47,8 @@ describe("MyGovernor", function () {
       const event = receipt.events.find((x) => x.event === "ProposalCreated");
       const { proposalId } = event.args;
 
-      // wait for the 1 block voting delay
-      await hre.network.provider.send("evm_mine");
+      // wait for the voting delay (4 blocks)
+      await mine(4);
 
       return { ...deployValues, proposalId };
     }
@@ -82,8 +71,8 @@ describe("MyGovernor", function () {
           (x) => x.event === "VoteCast"
         );
 
-        // wait for the 1 block voting period
-        await hre.network.provider.send("evm_mine");
+        // wait for the voting period to end (240 blocks)
+        await mine(240);
 
         return { ...proposingValues, voteCastEvent };
       }

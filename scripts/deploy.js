@@ -10,19 +10,13 @@ async function main() {
   //NOTE: get signer from wallet private key and the provider
   const owner = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
-  const transactionCount = await owner.getTransactionCount();
-
-  // gets the address of the token before it is deployed
-  const futureAddress = ethers.utils.getContractAddress({
-    from: owner.address,
-    nonce: transactionCount + 1,
-  });
+  const MyToken = await ethers.getContractFactory("MyToken");
+  const token = await MyToken.deploy();
 
   const MyGovernor = await ethers.getContractFactory("MyGovernor");
-  const governor = await MyGovernor.deploy(futureAddress);
+  const governor = await MyGovernor.deploy(token.address);
 
-  const MyToken = await ethers.getContractFactory("MyToken");
-  const token = await MyToken.deploy(governor.address);
+  await token.setGovernor(governor.address);
 
   const delegate = await token.delegate(owner.address);
 
