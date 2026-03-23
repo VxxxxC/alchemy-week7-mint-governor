@@ -3,32 +3,32 @@ require("dotenv").config();
 
 async function main() {
   //NOTE: get the PROVIDER from Alchemy, and set the network as Sepolia
-  const provider = ethers.getDefaultProvider("sepolia", {
-    alchemy: process.env.ALCHEMY_SEPOLIA_API,
-  });
+  const provider = new ethers.JsonRpcProvider(process.env.ALCHEMY_SEPOLIA_API_URL);
 
   //NOTE: get signer from wallet private key and the provider
   const owner = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
-  const transactionCount = await owner.getTransactionCount();
+  const transactionCount = await owner.getNonce();
 
-  // gets the address of the token before it is deployed
-  const futureAddress = ethers.utils.getContractAddress({
+  // gets the address of the governor before it is deployed (at nonce+1)
+  const futureGovernorAddress = ethers.getCreateAddress({
     from: owner.address,
     nonce: transactionCount + 1,
   });
 
-  const MyGovernor = await ethers.getContractFactory("MyGovernor");
-  const governor = await MyGovernor.deploy(futureAddress);
-
+  // Deploy token first (at nonce+0) with the governor's future address
   const MyToken = await ethers.getContractFactory("MyToken");
-  const token = await MyToken.deploy(governor.address);
+  const token = await MyToken.deploy(futureGovernorAddress);
+
+  // Deploy governor second (at nonce+1) with the already-deployed token
+  const MyGovernor = await ethers.getContractFactory("MyGovernor");
+  const governor = await MyGovernor.deploy(token.target);
 
   const delegate = await token.delegate(owner.address);
 
   console.log(
-    `Governor deployed to ${governor.address}`,
-    `Token deployed to ${token.address}`
+    `Governor deployed to ${governor.target}`,
+    `Token deployed to ${token.target}`
   );
 }
 
