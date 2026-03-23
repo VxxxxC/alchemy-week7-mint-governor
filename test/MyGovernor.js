@@ -62,6 +62,7 @@ describe("MyGovernor", function () {
           }
         })
         .find((e) => e && e.name === "ProposalCreated");
+      assert.ok(event, "ProposalCreated event not found in transaction receipt");
       const { proposalId } = event.args;
 
       // wait for the voting delay to pass (votingDelay = 4 blocks)
@@ -93,6 +94,7 @@ describe("MyGovernor", function () {
             }
           })
           .find((e) => e && e.name === "VoteCast");
+        assert.ok(voteCastEvent, "VoteCast event not found in transaction receipt");
 
         // wait for the voting period to end (votingPeriod = 240 blocks)
         await mine(240);

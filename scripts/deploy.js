@@ -2,6 +2,12 @@ const { ethers } = require("hardhat");
 require("dotenv").config();
 
 async function main() {
+  if (!process.env.ALCHEMY_SEPOLIA_API_URL || !process.env.WALLET_PRIVATE_KEY) {
+    throw new Error(
+      "Missing required environment variables: ALCHEMY_SEPOLIA_API_URL and WALLET_PRIVATE_KEY"
+    );
+  }
+
   //NOTE: get the PROVIDER from Alchemy, and set the network as Sepolia
   const provider = new ethers.JsonRpcProvider(process.env.ALCHEMY_SEPOLIA_API_URL);
 
