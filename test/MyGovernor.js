@@ -1,29 +1,27 @@
-const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { loadFixture, mine } = require("@nomicfoundation/hardhat-network-helpers");
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
-const { toUtf8Bytes, keccak256, parseEther } = ethers.utils;
+const { toUtf8Bytes, keccak256, parseEther } = ethers;
 
 describe("MyGovernor", function () {
   async function deployFixture() {
     const [owner, otherAccount] = await ethers.getSigners();
 
-    const transactionCount = await owner.getTransactionCount();
+    const transactionCount = await owner.getNonce();
 
-    // gets the address of the token before it is deployed
-    const futureAddress = ethers.utils.getContractAddress({
+    // gets the address of the governor before it is deployed (deployed at nonce+1)
+    const futureGovernorAddress = ethers.getCreateAddress({
       from: owner.address,
       nonce: transactionCount + 1,
     });
-    // console.log({ futureAddress });
-    // console.log({ transactionCount });
 
-    const MyGovernor = await ethers.getContractFactory("MyGovernor");
-    const governor = await MyGovernor.deploy(futureAddress);
-    // console.log({ governor });
-
+    // Deploy token first (at nonce+0) with the governor's future address
     const MyToken = await ethers.getContractFactory("MyToken");
-    const token = await MyToken.deploy(governor.address);
-    // console.log({ token });
+    const token = await MyToken.deploy(futureGovernorAddress);
+
+    // Deploy governor second (at nonce+1) with the already-deployed token
+    const MyGovernor = await ethers.getContractFactory("MyGovernor");
+    const governor = await MyGovernor.deploy(token.target);
 
     const delegate = await token.delegate(owner.address);
     // console.log({ delegate });
@@ -35,7 +33,7 @@ describe("MyGovernor", function () {
     const { token, owner } = await loadFixture(deployFixture);
 
     const balance = await token.balanceOf(owner.address);
-    assert.equal(balance.toString(), parseEther("10000"));
+    assert.equal(balance.toString(), parseEther("10000").toString());
   });
 
   describe("after proposing", () => {
@@ -44,7 +42,7 @@ describe("MyGovernor", function () {
       const { governor, token, owner } = deployValues;
 
       const tx = await governor.propose(
-        [token.address],
+        [token.target],
         [0],
         [
           token.interface.encodeFunctionData("mint", [
@@ -55,11 +53,20 @@ describe("MyGovernor", function () {
         "Give the owner more tokens!"
       );
       const receipt = await tx.wait();
-      const event = receipt.events.find((x) => x.event === "ProposalCreated");
+      const event = receipt.logs
+        .map((log) => {
+          try {
+            return governor.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((e) => e && e.name === "ProposalCreated");
+      assert.ok(event, "ProposalCreated event not found in transaction receipt");
       const { proposalId } = event.args;
 
-      // wait for the 1 block voting delay
-      await hre.network.provider.send("evm_mine");
+      // wait for the voting delay to pass (votingDelay = 4 blocks)
+      await mine(4);
 
       return { ...deployValues, proposalId };
     }
@@ -78,12 +85,19 @@ describe("MyGovernor", function () {
 
         const tx = await governor.castVote(proposalId, 1);
         const receipt = await tx.wait();
-        const voteCastEvent = receipt.events.find(
-          (x) => x.event === "VoteCast"
-        );
+        const voteCastEvent = receipt.logs
+          .map((log) => {
+            try {
+              return governor.interface.parseLog(log);
+            } catch {
+              return null;
+            }
+          })
+          .find((e) => e && e.name === "VoteCast");
+        assert.ok(voteCastEvent, "VoteCast event not found in transaction receipt");
 
-        // wait for the 1 block voting period
-        await hre.network.provider.send("evm_mine");
+        // wait for the voting period to end (votingPeriod = 240 blocks)
+        await mine(240);
 
         return { ...proposingValues, voteCastEvent };
       }
@@ -104,7 +118,7 @@ describe("MyGovernor", function () {
         );
 
         await governor.execute(
-          [token.address],
+          [token.target],
           [0],
           [
             token.interface.encodeFunctionData("mint", [
